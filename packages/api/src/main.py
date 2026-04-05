@@ -6,19 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from src.core.config import settings
-from src.core.database import engine, Base
-from src.api import v1
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    # 启动时：创建数据库表
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # 启动时
     yield
-    # 关闭时：关闭数据库连接
-    await engine.dispose()
+    # 关闭时
 
 
 app = FastAPI(
@@ -38,7 +33,8 @@ app.add_middleware(
 )
 
 # 注册路由
-app.include_router(v1.router, prefix="/api/v1")
+from src.api import api_router
+app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/")
