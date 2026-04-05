@@ -3,14 +3,18 @@ API 路由
 """
 from fastapi import APIRouter
 
-from src.api.endpoints import users, auth, design, inspection, construction, payment
+# 创建主路由
+api_router = APIRouter()
 
-router = APIRouter()
+# 延迟导入避免循环依赖
+def include_routers():
+    from src.api.endpoints import auth, users, design, inspection, construction, payment
+    
+    api_router.include_router(auth.router, prefix="/auth", tags=["认证"])
+    api_router.include_router(users.router, prefix="/users", tags=["用户"])
+    api_router.include_router(design.router, prefix="/design", tags=["设计"])
+    api_router.include_router(inspection.router, prefix="/inspection", tags=["验房"])
+    api_router.include_router(construction.router, prefix="/construction", tags=["施工"])
+    api_router.include_router(payment.router, prefix="/payment", tags=["支付"])
 
-# 注册各模块路由
-router.include_router(auth.router, prefix="/auth", tags=["认证"])
-router.include_router(users.router, prefix="/users", tags=["用户"])
-router.include_router(design.router, prefix="/design", tags=["设计"])
-router.include_router(inspection.router, prefix="/inspection", tags=["验房"])
-router.include_router(construction.router, prefix="/construction", tags=["施工"])
-router.include_router(payment.router, prefix="/payment", tags=["支付"])
+include_routers()
