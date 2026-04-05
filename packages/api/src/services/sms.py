@@ -6,9 +6,6 @@ import re
 from datetime import datetime, timedelta
 from typing import Optional
 
-from src.core.config import settings
-from src.core.security import generate_sms_code
-
 logger = logging.getLogger(__name__)
 
 
@@ -20,10 +17,10 @@ class SmsService:
     MIN_INTERVAL_SECONDS = 60
     
     # 内存存储
-    _code_store: dict[str, tuple[str, datetime]] = {}
-    _send_times: dict[str, list[datetime]] = {}
+    _code_store: dict = {}
+    _send_times: dict = {}
     
-    async def send_login_code(self, phone: str) -> dict:
+    def send_login_code(self, phone: str) -> dict:
         """发送登录验证码"""
         # 验证手机号格式
         if not self._validate_phone(phone):
@@ -34,7 +31,7 @@ class SmsService:
             return {"success": False, "message": f"发送太频繁，请{self.MIN_INTERVAL_SECONDS}秒后重试", "code": None}
         
         # 生成验证码（测试环境固定为123456）
-        code = "123456"  # 测试环境固定验证码
+        code = "123456"
         
         # 存储验证码
         expire_time = datetime.utcnow() + timedelta(minutes=self.CODE_EXPIRE_MINUTES)
@@ -48,7 +45,7 @@ class SmsService:
         logger.info(f"[模拟短信] 发送到 {phone}，验证码: {code}")
         return {"success": True, "message": "验证码已发送", "code": code}
     
-    async def verify_code(self, phone: str, code: str) -> bool:
+    def verify_code(self, phone: str, code: str) -> bool:
         """验证验证码"""
         stored = self._code_store.get(phone)
         if not stored:
@@ -61,7 +58,6 @@ class SmsService:
             return False
         
         if stored_code == code:
-            # 验证成功后删除验证码
             del self._code_store[phone]
             return True
         
@@ -72,14 +68,12 @@ class SmsService:
         now = datetime.utcnow()
         one_hour_ago = now - timedelta(hours=1)
         
-        # 检查最近1小时内的发送次数
         send_times = self._send_times.get(phone, [])
         recent_sends = [t for t in send_times if t > one_hour_ago]
         
         if len(recent_sends) >= self.MAX_SENDS_PER_HOUR:
             return False
         
-        # 检查最小间隔
         if recent_sends:
             last_send = max(recent_sends)
             if (now - last_send).total_seconds() < self.MIN_INTERVAL_SECONDS:
@@ -99,7 +93,7 @@ sms_service = SmsService()
 
 async def send_sms_code(phone: str) -> str:
     """发送短信验证码"""
-    result = await sms_service.send_login_code(phone)
+    result = sms_service.send_login_code(phone)
     if result["success"]:
         return result["code"]
     raise ValueError(result["message"])
@@ -107,4 +101,4 @@ async def send_sms_code(phone: str) -> str:
 
 async def verify_sms_code(phone: str, code: str) -> bool:
     """验证短信验证码"""
-    return await sms_service.verify_code(phone, code)
+    return sms_service.verify_code(phone, code)
