@@ -9,17 +9,14 @@ from typing import Optional
 
 from src.core.database import get_db
 from src.core.security import create_access_token, decode_access_token, get_password_hash
-from src.models.user import User, LoginLog
+from src.models.user import User, LoginLog, get_user_by_phone, get_user_by_id, create_user, update_user_login
 from src.services.sms import send_sms_code, verify_sms_code
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
 
 
-# ============ 请求模型 ============
-
 class SendCodeRequest(BaseModel):
-    """发送验证码请求"""
     phone: str = Field(..., description="手机号")
     
     @field_validator("phone")
@@ -32,7 +29,6 @@ class SendCodeRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    """手机号验证码登录请求"""
     phone: str = Field(..., description="手机号")
     code: str = Field(..., min_length=6, max_length=6, description="验证码")
     
@@ -46,23 +42,18 @@ class LoginRequest(BaseModel):
 
 
 class LoginPasswordRequest(BaseModel):
-    """手机号密码登录请求"""
     phone: str = Field(..., description="手机号")
     password: str = Field(..., min_length=6, description="密码")
 
 
 class RegisterRequest(BaseModel):
-    """注册请求"""
     phone: str = Field(..., description="手机号")
     code: str = Field(..., min_length=6, max_length=6, description="验证码")
     password: Optional[str] = Field(None, min_length=6, description="密码（可选）")
     nickname: Optional[str] = Field(None, max_length=50, description="昵称")
 
 
-# ============ 响应模型 ============
-
 class UserInfo(BaseModel):
-    """用户信息"""
     id: str
     phone: str
     nickname: Optional[str] = None
@@ -77,21 +68,17 @@ class UserInfo(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    """登录响应"""
     access_token: str
     token_type: str = "bearer"
-    expires_in: int = 10080  # 分钟
+    expires_in: int = 10080
     user: UserInfo
 
 
 class SendCodeResponse(BaseModel):
-    """发送验证码响应"""
     success: bool
     message: str
     expire_minutes: int = 5
 
-
-# ============ 依赖项 ============
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
@@ -105,9 +92,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"}
         )
     
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    
+    payload = decode_access_token(credentials.credentials)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -123,7 +108,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"}
         )
     
-    user = await User.get_by_id(db, user_id)
+    user = await get_user_by_id(db, user_id)
     if not user or user.status.value == "deleted":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -134,69 +119,36 @@ async def get_current_user(
     return user
 
 
-# ============ 接口 ============
-
 @router.post("/send-code", response_model=SendCodeResponse)
-async def send_code(
-    request: SendCodeRequest,
-    db: AsyncSession = Depends(get_db)
-):
+async def send_code(request: SendCodeRequest):
     """发送短信验证码"""
     try:
-        code = await send_sms_code(request.phone)
-        return SendCodeResponse(
-            success=True,
-            message="验证码已发送",
-            expire_minutes=5
-        )
+        await send_sms_code(request.phone)
+        return SendCodeResponse(success=True, message="验证码已发送", expire_minutes=5)
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="发送失败，请稍后重试"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="发送失败，请稍后重试")
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(
-    request: LoginRequest,
-    req: Request,
-    db: AsyncSession = Depends(get_db)
-):
+async def login(request: LoginRequest, req: Request, db: AsyncSession = Depends(get_db)):
     """手机号验证码登录"""
-    # 验证验证码
     if not await verify_sms_code(request.phone, request.code):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="验证码错误或已过期"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="验证码错误或已过期")
     
-    # 查询或创建用户
-    user = await User.get_by_phone(db, request.phone)
+    user = await get_user_by_phone(db, request.phone)
     if not user:
-        # 新用户自动注册
-        user = await User.create(db, phone=request.phone)
+        user = await create_user(db, phone=request.phone)
+        await db.commit()
     
-    # 更新登录信息
     client_ip = req.client.host if req.client else None
-    await user.update_login(db, ip=client_ip)
-    await db.commit()
+    await update_user_login(db, user, ip=client_ip)
     
-    # 记录登录日志
-    login_log = LoginLog(
-        user_id=user.id,
-        phone=user.phone,
-        ip=client_ip,
-        status="success"
-    )
+    login_log = LoginLog(user_id=user.id, phone=user.phone, ip=client_ip, status="success")
     db.add(login_log)
     await db.commit()
     
-    # 生成Token
     access_token = create_access_token(data={"sub": user.id})
     
     return LoginResponse(
@@ -215,33 +167,21 @@ async def login(
 
 
 @router.post("/login/password", response_model=LoginResponse)
-async def login_password(
-    request: LoginPasswordRequest,
-    req: Request,
-    db: AsyncSession = Depends(get_db)
-):
+async def login_password(request: LoginPasswordRequest, req: Request, db: AsyncSession = Depends(get_db)):
     """手机号密码登录"""
     from src.core.security import verify_password
     
-    user = await User.get_by_phone(db, request.phone)
+    user = await get_user_by_phone(db, request.phone)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="手机号或密码错误"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="手机号或密码错误")
     
     if not user.password_hash or not verify_password(request.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="手机号或密码错误"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="手机号或密码错误")
     
-    # 更新登录信息
     client_ip = req.client.host if req.client else None
-    await user.update_login(db, ip=client_ip)
+    await update_user_login(db, user, ip=client_ip)
     await db.commit()
     
-    # 生成Token
     access_token = create_access_token(data={"sub": user.id})
     
     return LoginResponse(
@@ -260,50 +200,27 @@ async def login_password(
 
 
 @router.post("/register", response_model=LoginResponse)
-async def register(
-    request: RegisterRequest,
-    req: Request,
-    db: AsyncSession = Depends(get_db)
-):
+async def register(request: RegisterRequest, req: Request, db: AsyncSession = Depends(get_db)):
     """用户注册"""
-    # 验证验证码
     if not await verify_sms_code(request.phone, request.code):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="验证码错误或已过期"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="验证码错误或已过期")
     
-    # 检查手机号是否已注册
-    existing_user = await User.get_by_phone(db, request.phone)
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="该手机号已注册"
-        )
+    existing = await get_user_by_phone(db, request.phone)
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该手机号已注册")
     
-    # 创建用户
-    user_data = {
-        "phone": request.phone,
-        "nickname": request.nickname
-    }
+    user_data = {"phone": request.phone, "nickname": request.nickname}
     if request.password:
         user_data["password_hash"] = get_password_hash(request.password)
     
-    user = await User.create(db, **user_data)
+    user = await create_user(db, **user_data)
     await db.commit()
     
-    # 记录登录日志
     client_ip = req.client.host if req.client else None
-    login_log = LoginLog(
-        user_id=user.id,
-        phone=user.phone,
-        ip=client_ip,
-        status="success"
-    )
+    login_log = LoginLog(user_id=user.id, phone=user.phone, ip=client_ip, status="success")
     db.add(login_log)
     await db.commit()
     
-    # 生成Token
     access_token = create_access_token(data={"sub": user.id})
     
     return LoginResponse(
@@ -322,9 +239,7 @@ async def register(
 
 
 @router.get("/me", response_model=UserInfo)
-async def get_current_user_info(
-    current_user: User = Depends(get_current_user)
-):
+async def get_me(current_user: User = Depends(get_current_user)):
     """获取当前用户信息"""
     return UserInfo(
         id=current_user.id,
@@ -339,10 +254,8 @@ async def get_current_user_info(
 
 
 @router.post("/logout")
-async def logout(
-    current_user: User = Depends(get_current_user)
-):
-    """退出登录（前端删除Token即可）"""
+async def logout(current_user: User = Depends(get_current_user)):
+    """退出登录"""
     return {"message": "已退出登录"}
 
 
@@ -357,16 +270,10 @@ async def change_password(
     from src.core.security import verify_password, get_password_hash
     
     if not current_user.password_hash:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="您还未设置密码"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="您还未设置密码")
     
     if not verify_password(old_password, current_user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="原密码错误"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="原密码错误")
     
     current_user.password_hash = get_password_hash(new_password)
     await db.commit()
@@ -382,20 +289,12 @@ async def bind_phone(
     db: AsyncSession = Depends(get_db)
 ):
     """绑定手机号"""
-    # 验证验证码
     if not await verify_sms_code(phone, code):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="验证码错误或已过期"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="验证码错误或已过期")
     
-    # 检查手机号是否已被绑定
-    existing = await User.get_by_phone(db, phone)
+    existing = await get_user_by_phone(db, phone)
     if existing and existing.id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="该手机号已被其他账号绑定"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该手机号已被其他账号绑定")
     
     current_user.phone = phone
     await db.commit()
