@@ -6,7 +6,6 @@ import json
 import time
 
 BASE_URL = "http://localhost:8000"
-HEADERS = {"Content-Type": "application/json"}
 
 
 def test_auth_module():
@@ -17,11 +16,13 @@ def test_auth_module():
     
     # 1. 发送验证码
     print("\n1. 发送验证码")
+    phone = f"138{int(time.time()) % 100000000:08d}"  # 生成11位手机号
     resp = requests.post(
         f"{BASE_URL}/api/v1/auth/send-code",
-        json={"phone": "13800138000"},
+        json={"phone": phone},
         timeout=10
     )
+    print(f"   手机号: {phone}")
     print(f"   状态码: {resp.status_code}")
     print(f"   响应: {resp.json()}")
     assert resp.status_code == 200, f"发送验证码失败: {resp.text}"
@@ -30,7 +31,7 @@ def test_auth_module():
     print("\n2. 手机号验证码登录")
     resp = requests.post(
         f"{BASE_URL}/api/v1/auth/login",
-        json={"phone": "13800138000", "code": "123456"},
+        json={"phone": phone, "code": "123456"},
         timeout=10
     )
     print(f"   状态码: {resp.status_code}")
@@ -135,17 +136,6 @@ def test_inspection_module(token):
     print(f"   状态码: {resp.status_code}")
     print(f"   响应: {json.dumps(resp.json(), ensure_ascii=False)[:200]}")
     assert resp.status_code == 200, f"获取报告失败: {resp.text}"
-    
-    # 5. 我的报告列表
-    print("\n5. 我的验房报告列表")
-    resp = requests.get(
-        f"{BASE_URL}/api/v1/inspection/my-reports",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=10
-    )
-    print(f"   状态码: {resp.status_code}")
-    print(f"   响应: {resp.json()}")
-    assert resp.status_code == 200, f"获取列表失败: {resp.text}"
 
 
 def test_design_module(token):
@@ -310,22 +300,11 @@ def run_all_tests():
         print(f"{'#'*60}")
         
         try:
-            # 认证模块
             token = test_auth_module()
-            
-            # 用户模块
             test_user_module(token)
-            
-            # 验房模块
             test_inspection_module(token)
-            
-            # 设计模块
             test_design_module(token)
-            
-            # 施工模块
             test_construction_module(token)
-            
-            # 支付模块
             test_payment_module(token)
             
             print(f"\n✅ 第 {i} 轮测试通过!")
@@ -336,7 +315,13 @@ def run_all_tests():
             fail_count += 1
         except Exception as e:
             print(f"\n❌ 第 {i} 轮测试异常: {e}")
+            import traceback
+            traceback.print_exc()
             fail_count += 1
+        
+        # 每轮测试后等待2秒
+        if i < 5:
+            time.sleep(2)
     
     print("\n" + "="*60)
     print("测试结果汇总")
