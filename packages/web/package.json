@@ -1,0 +1,52 @@
+{
+  "name": "@jzhuang/web",
+  "version": "1.0.0",
+  "description": "集装修微信小程序前端",
+  "main": "src/app.ts",
+  "scripts": {
+    "dev": "npm run dev:weapp",
+    "build": "npm run build:weapp",
+    "dev:weapp": "cross-env NODE_ENV=development taro build --type weapp --watch",
+    "build:weapp": "cross-env NODE_ENV=production taro build --type weapp",
+    "dev:h5": "cross-env NODE_ENV=development taro build --type h5 --watch",
+    "build:h5": "cross-env NODE_ENV=production taro build --type h5",
+    "lint": "eslint --ext .ts,.tsx src",
+    "lint:fix": "eslint --ext .ts,.tsx src --fix"
+  },
+  "browserslist": [
+    "last 3 versions",
+    "Android >= 4.4",
+    "ios >= 9"
+  ],
+  "dependencies": {
+    "@ant-design/icons": "^5.2.6",
+    "@tarojs/components": "3.6.22",
+    "@tarojs/plugin-framework-react": "3.6.22",
+    "@tarojs/plugin-platform-weapp": "3.6.22",
+    "@tarojs/react": "3.6.22",
+    "@tarojs/runtime": "3.6.22",
+    "@tarojs/taro": "3.6.22",
+    "@tarojs/webpack5-runner": "3.6.22",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.6",
+    "@tarojs/cli": "3.6.22",
+    "@types/react": "^18.2.45",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "cross-env": "^7.0.3",
+    "css-loader": "^6.8.1",
+    "eslint": "^8.56.0",
+    "eslint-config-taro": "3.6.22",
+    "eslint-plugin-react": "^7.33.2",
+    "stylelint": "^15.11.0",
+    "typescript": "^5.3.3",
+    "webpack": "^5.89.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
