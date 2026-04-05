@@ -133,5 +133,34 @@ class ConstructionService:
         return int(total_progress / len(nodes))
 
 
+# 标准施工节点定义
+STANDARD_NODES = [
+    {"name": "开工准备", "type": "preparation", "days": 3, "sequence": 1,
+     "notes": "办理物业手续、确定设计方案、进场准备",
+     "standards": "施工许可证办理完成、材料进场验收"},
+    {"name": "水电改造", "type": "electrical", "days": 7, "sequence": 2,
+     "notes": "水电定位、开槽、布管、穿线",
+     "standards": "电线走活线、水管打压测试"},
+    {"name": "防水工程", "type": "waterproof", "days": 5, "sequence": 3,
+     "notes": "卫生间、厨房、阳台防水处理",
+     "standards": "闭水试验48小时无渗漏"},
+    {"name": "泥瓦工程", "type": "tiling", "days": 14, "sequence": 4,
+     "notes": "墙地砖铺贴、地面找平",
+     "standards": "瓷砖空鼓率<5%、接缝均匀"},
+    {"name": "木工工程", "type": "carpentry", "days": 10, "sequence": 5,
+     "notes": "吊顶、背景墙、定制柜体",
+     "standards": "结构稳固、表面平整"},
+    {"name": "油漆工程", "type": "painting", "days": 8, "sequence": 6,
+     "notes": "墙面刮腻子、刷漆",
+     "standards": "墙面平整、无色差"},
+    {"name": "安装工程", "type": "installation", "days": 5, "sequence": 7,
+     "notes": "灯具、开关插座、洁具安装",
+     "standards": "功能正常、安装牢固"},
+    {"name": "竣工验收", "type": "acceptance", "days": 3, "sequence": 8,
+     "notes": "整体验收、整改、交付",
+     "standards": "符合设计方案、验收合格"},
+]
+
+
 # 全局单例
 construction_service = ConstructionService()
