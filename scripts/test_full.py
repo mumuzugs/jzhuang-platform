@@ -1,5 +1,5 @@
 """
-完整API测试脚本 - 8轮测试
+完整API测试脚本 - 8轮测试（含验收模块）
 """
 import requests
 import json
@@ -60,20 +60,19 @@ def test_module(name, tests):
 def run_full_test(token=None):
     """运行完整测试"""
     print("\n" + "#"*60)
-    print("# 集装修 API 完整测试")
+    print("# 集装修 API 完整测试 (V2.0)")
     print("#"*60)
     
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     
     # 模块1: 认证
+    phone = f"138{int(time.time())%100000000:08d}"
     auth_tests = [
         ("发送验证码", "POST", "/api/v1/auth/send-code", 
-         {"phone": f"138{int(time.time())%100000000:08d}"}, lambda: {}),
+         {"phone": phone}, lambda: {}),
     ]
     results_auth = test_module("认证", auth_tests)
     
-    # 获取token用于后续测试
-    phone = f"138{int(time.time())%100000000:08d}"
     try:
         requests.post(f"{BASE_URL}/api/v1/auth/send-code", json={"phone": phone}, timeout=10)
         time.sleep(0.5)
@@ -87,16 +86,10 @@ def run_full_test(token=None):
         else:
             results_auth["failed"] += 1
             log(f"❌ 登录: {resp.status_code}")
-            errors = list(results_auth["errors"])
-            errors.append(("登录", "/api/v1/auth/login", resp.status_code, resp.text[:100]))
-            results_auth["errors"] = errors
     except Exception as e:
         results_auth["failed"] += 2
         log(f"❌ 登录: {str(e)}")
     
-    results_auth["passed"] += 1  # 发送验证码已通过
-    
-    # 获取用户信息
     if token:
         auth_tests2 = [
             ("获取当前用户", "GET", "/api/v1/auth/me", None, lambda: headers),
@@ -150,6 +143,15 @@ def run_full_test(token=None):
     ]
     results_payment = test_module("支付", payment_tests)
     
+    # 模块7: 验收 (V2.0新增)
+    acceptance_tests = [
+        ("获取验收标准", "GET", "/api/v1/acceptance/standards", None, lambda: headers),
+        ("获取节点清单", "GET", "/api/v1/acceptance/node-checklist/electrical", None, lambda: headers),
+        ("提交验收", "POST", "/api/v1/acceptance/submit", 
+         {"node_id": "test", "project_id": "test", "check_items": [], "photos": []}, lambda: headers),
+    ]
+    results_acceptance = test_module("验收(V2.0)", acceptance_tests)
+    
     all_results = {
         "认证": results_auth,
         "用户": results_user,
@@ -157,6 +159,7 @@ def run_full_test(token=None):
         "设计": results_design,
         "施工": results_construction,
         "支付": results_payment,
+        "验收(V2.0)": results_acceptance,
     }
     
     total_passed = sum(r["passed"] for r in all_results.values())
@@ -168,7 +171,7 @@ def run_full_test(token=None):
 def print_summary(results, passed, failed, round_num):
     """打印测试汇总"""
     print(f"\n{'='*60}")
-    print(f"# 第 {round_num} 轮测试结果汇总")
+    print(f"# 第 {round_num} 轮测试结果汇总 (V2.0架构)")
     print('='*60)
     
     for module, result in results.items():
@@ -192,15 +195,15 @@ if __name__ == "__main__":
     results, passed, failed, token = run_full_test()
     success = print_summary(results, passed, failed, round_num)
     
-    # 保存结果
     output = {
         "round": round_num,
-        "results": {k: {"passed": v["passed"], "failed": v["failed"], "errors": v["errors"]} 
+        "version": "V2.0",
+        "results": {k: {"passed": v["passed"], "failed": v["failed"]} 
                     for k, v in results.items()},
         "total_passed": passed,
         "total_failed": failed,
         "success": success
     }
     
-    with open(f"/tmp/test_result_{round_num}.json", "w") as f:
+    with open(f"/tmp/test_result_v2_{round_num}.json", "w") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
