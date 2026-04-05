@@ -1,9 +1,11 @@
 """
-用户模型
+用户服务
 """
-from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text, Enum as SQLEnum
+from datetime import datetime, timedelta
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text, Enum as SQLEnum, Index
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
 
 from src.core.database import Base
 import enum
@@ -11,49 +13,144 @@ import enum
 
 class UserRole(str, enum.Enum):
     """用户角色"""
-    FREE = "free"           # 免费版用户
-    PRO = "pro"             # 专业版用户
-    ADMIN = "admin"         # 管理员
+    FREE = "free"
+    PRO = "pro"
+    ADMIN = "admin"
+
+
+class UserStatus(str, enum.Enum):
+    """用户状态"""
+    ACTIVE = "active"
+    DISABLED = "disabled"
+    DELETED = "deleted"
 
 
 class User(Base):
     """用户表"""
     __tablename__ = "users"
     
-    id = Column(String(36), primary_key=True, index=True)
+    # 主键
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    
+    # 基本信息
     phone = Column(String(11), unique=True, index=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
+    password_hash = Column(String(255), nullable=True)  # 密码（有手机号+密码登录时使用）
     nickname = Column(String(50), nullable=True)
     avatar = Column(String(500), nullable=True)
+    
+    # 角色与状态
     role = Column(SQLEnum(UserRole), default=UserRole.FREE, nullable=False)
+    status = Column(SQLEnum(UserStatus), default=UserStatus.ACTIVE, nullable=False)
     
     # 会员信息
     pro_expire_time = Column(DateTime, nullable=True)  # 专业版到期时间
+    pro_order_no = Column(String(64), nullable=True)  # 专业版订单号
+    
+    # 验证码（临时存储）
+    sms_code = Column(String(6), nullable=True)
+    sms_code_expire = Column(DateTime, nullable=True)
+    
+    # 时间戳
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    is_deleted = Column(Boolean, default=False, nullable=False)
+    last_login_at = Column(DateTime, nullable=True)
+    last_login_ip = Column(String(45), nullable=True)
     
-    # 关系
-    orders = relationship("Order", back_populates="user")
-    design_projects = relationship("DesignProject", back_populates="user")
-    inspection_reports = relationship("InspectionReport", back_populates="user")
-    construction_projects = relationship("ConstructionProject", back_populates="user")
+    # 索引
+    __table_args__ = (
+        Index("idx_user_phone", "phone"),
+        Index("idx_user_created_at", "created_at"),
+        Index("idx_user_role", "role"),
+    )
+    
+    @property
+    def is_pro(self) -> bool:
+        """是否专业版用户"""
+        if self.role == UserRole.PRO and self.pro_expire_time:
+            return self.pro_expire_time > datetime.utcnow()
+        return False
+    
+    @property
+    def is_expired(self) -> bool:
+        """是否已过期"""
+        if self.pro_expire_time:
+            return self.pro_expire_time < datetime.utcnow()
+        return True
+    
+    @classmethod
+    async def get_by_phone(cls, db, phone: str):
+        """根据手机号查询用户"""
+        from sqlalchemy import select
+        result = await db.execute(
+            select(cls).where(cls.phone == phone, cls.status != UserStatus.DELETED)
+        )
+        return result.scalar_one_or_none()
+    
+    @classmethod
+    async def get_by_id(cls, db, user_id: str):
+        """根据ID查询用户"""
+        from sqlalchemy import select
+        result = await db.execute(
+            select(cls).where(cls.id == user_id)
+        )
+        return result.scalar_one_or_none()
+    
+    @classmethod
+    async def create(cls, db, phone: str, **kwargs):
+        """创建用户"""
+        user = cls(phone=phone, **kwargs)
+        db.add(user)
+        await db.flush()
+        return user
+    
+    async def update_login(self, db, ip: str = None):
+        """更新登录信息"""
+        self.last_login_at = datetime.utcnow()
+        if ip:
+            self.last_login_ip = ip
+        await db.flush()
 
 
-class Order(Base):
-    """订单表"""
-    __tablename__ = "orders"
+class SmsCode(Base):
+    """短信验证码表"""
+    __tablename__ = "sms_codes"
     
-    id = Column(String(36), primary_key=True)
-    user_id = Column(String(36), nullable=False, index=True)
-    order_no = Column(String(64), unique=True, nullable=False)
-    amount = Column(Integer, nullable=False)  # 金额（分）
-    status = Column(String(20), default="pending", nullable=False)  # pending, paid, cancelled, refunded
-    payment_method = Column(String(20), nullable=True)
-    payment_time = Column(DateTime, nullable=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    phone = Column(String(11), nullable=False, index=True)
+    code = Column(String(6), nullable=False)
+    purpose = Column(String(20), nullable=False)  # login, bind, reset_pwd
+    status = Column(String(20), default="pending")  # pending, used, expired
+    used_at = Column(DateTime, nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    expire_at = Column(DateTime, nullable=False)
     
-    # 关系
-    user = relationship("User", back_populates="orders")
+    __table_args__ = (
+        Index("idx_sms_code_phone", "phone", "purpose"),
+        Index("idx_sms_code_expire", "expire_at"),
+    )
+    
+    @property
+    def is_valid(self) -> bool:
+        """是否有效"""
+        return self.status == "pending" and self.expire_at > datetime.utcnow()
+
+
+class LoginLog(Base):
+    """登录日志表"""
+    __tablename__ = "login_logs"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), nullable=True, index=True)
+    phone = Column(String(11), nullable=False, index=True)
+    ip = Column(String(45), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    device = Column(String(50), nullable=True)  # weapp, app, h5
+    status = Column(String(20), nullable=False)  # success, failed
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index("idx_login_log_phone", "phone"),
+        Index("idx_login_log_created_at", "created_at"),
+    )
