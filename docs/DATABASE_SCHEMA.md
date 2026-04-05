@@ -622,30 +622,472 @@ CREATE TABLE process_library (
 
 ---
 
-## 三、表关系图
+### 2.7 系统域表 (system)
 
+#### 2.7.1 短信验证码表 `sms_codes`
+
+```sql
+CREATE TABLE sms_codes (
+    id                  BIGSERIAL PRIMARY KEY,
+    phone               VARCHAR(20) NOT NULL,
+    code                VARCHAR(10) NOT NULL,
+    type                VARCHAR(30) NOT NULL,
+    used                BOOLEAN DEFAULT FALSE,
+    expired_at          TIMESTAMP NOT NULL,
+    used_at             TIMESTAMP,
+    ip                  VARCHAR(50),
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
-users (1) ──────< user_roles
-  │
-  ├──< house_profiles ──────< inspection_reports ──────< inspection_issues
-  │                              │
-  │                              └──< design_projects ──────< design_plans
-  │                                                         │
-  │                                                         └──< design_materials
-  │                                                         └──< design_drawings
-  │
-  ├──< orders ──────< payment_records
-  │
-  └──< construction_projects ──────< construction_nodes
-                                      │
-                                      └──< rectification_orders
-                                      └──< acceptance_records
-                                      └──< warranty_records
+
+#### 2.7.2 区域表 `regions`
+
+```sql
+CREATE TABLE regions (
+    id                  SERIAL PRIMARY KEY,
+    code                VARCHAR(20) UNIQUE NOT NULL,
+    name                VARCHAR(100) NOT NULL,
+    level               INTEGER NOT NULL,
+    parent_code         VARCHAR(20),
+    pinyin              VARCHAR(100),
+    is_active           BOOLEAN DEFAULT TRUE
+);
 ```
 
 ---
 
-## 四、字段类型规范
+## 三、预算域表 (budget) ⭐ 核心模块
+
+> **架构文档V2.0要求**：预算引擎是核心壁垒，采用DAG工序影响链模型
+
+#### 3.1 预算单主表 `budget_orders`
+
+```sql
+-- 预算单主表
+CREATE TABLE budget_orders (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    budget_no               VARCHAR(50) UNIQUE NOT NULL,  -- 预算单编号
+    
+    project_id              UUID NOT NULL REFERENCES design_projects(id),  -- 设计项目
+    design_plan_id         UUID REFERENCES design_plans(id),
+    
+    user_id                UUID NOT NULL REFERENCES users(id),
+    house_id               UUID REFERENCES house_profiles(id),
+    
+    city                   VARCHAR(50) NOT NULL,        -- 城市（用于调价）
+    
+    -- 面积信息
+    total_area             DECIMAL(10,2) NOT NULL,     -- 总面积
+    room_count             INTEGER,                     -- 房间数
+    
+    -- 预算金额
+    total_amount           DECIMAL(12,2) DEFAULT 0,    -- 预算总额
+    material_amount        DECIMAL(12,2) DEFAULT 0,    -- 材料费
+    labor_amount           DECIMAL(12,2) DEFAULT 0,    -- 人工费
+    management_amount      DECIMAL(12,2) DEFAULT 0,    -- 管理费
+    misc_amount            DECIMAL(12,2) DEFAULT 0,     -- 其他费用
+    
+    -- 调价信息
+    adjust_coefficient     DECIMAL(6,4) DEFAULT 1.0000, -- 地区调价系数
+    adjust_reason          VARCHAR(200),               -- 调价原因
+    
+    -- 预算控制
+    budget_limit           DECIMAL(12,2),              -- 用户设定的预算上限
+    is_exceed_limit       BOOLEAN DEFAULT FALSE,      -- 是否超预算
+    exceed_amount          DECIMAL(12,2) DEFAULT 0,   -- 超预算金额
+    
+    -- 版本控制
+    version                INTEGER DEFAULT 1,          -- 版本号
+    is_latest              BOOLEAN DEFAULT TRUE,       -- 是否最新版本
+    
+    -- 状态
+    status                 VARCHAR(20) DEFAULT 'draft', -- draft/calculating/completed/confirmed
+    calculated_at          TIMESTAMP,                  -- 计算完成时间
+    confirmed_at           TIMESTAMP,                  -- 确认时间
+    
+    created_at             TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at             TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_budget_orders_project_id ON budget_orders(project_id);
+CREATE INDEX idx_budget_orders_user_id ON budget_orders(user_id);
+CREATE INDEX idx_budget_orders_city ON budget_orders(city);
+CREATE INDEX idx_budget_orders_status ON budget_orders(status);
+CREATE INDEX idx_budget_orders_is_latest ON budget_orders(is_latest);
+```
+
+#### 3.2 预算明细表 `budget_items`
+
+```sql
+-- 预算明细表（每个预算单包含多个明细项）
+CREATE TABLE budget_items (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    budget_id               UUID NOT NULL REFERENCES budget_orders(id),
+    project_id              UUID NOT NULL REFERENCES design_projects(id),
+    
+    -- 工序信息（DAG工序链）
+    process_code            VARCHAR(50) NOT NULL,      -- 工序编码
+    process_name            VARCHAR(200) NOT NULL,     -- 工序名称
+    category                VARCHAR(50) NOT NULL,      -- 工序分类（水电/泥瓦/木工等）
+    node_code               VARCHAR(50),               -- 所属节点
+    
+    -- 材料明细
+    material_code           VARCHAR(50),               -- 材料编码
+    material_name           VARCHAR(200) NOT NULL,     -- 材料名称
+    brand                   VARCHAR(100),              -- 品牌
+    spec                    VARCHAR(200),              -- 规格
+    unit                    VARCHAR(20),               -- 单位
+    
+    quantity                DECIMAL(10,2) NOT NULL,    -- 数量
+    loss_rate               DECIMAL(5,4) DEFAULT 1.0000, -- 损耗系数
+    actual_quantity         DECIMAL(10,2),             -- 实际用量（含损耗）
+    
+    -- 价格信息
+    unit_price              DECIMAL(12,2) NOT NULL,   -- 单价
+    market_price            DECIMAL(12,2),            -- 市场价
+    purchase_price          DECIMAL(12,2),            -- 采购价
+    
+    amount                  DECIMAL(12,2) NOT NULL,   -- 小计金额
+    
+    -- 人工信息
+    labor_hours             DECIMAL(8,2),            -- 人工工时
+    labor_unit_price        DECIMAL(12,2),           -- 人工单价
+    labor_amount            DECIMAL(12,2),           -- 人工费
+    
+    -- 工序关联（DAG影响链）
+    prerequisite_processes  JSONB DEFAULT '[]',      -- 前置工序列表
+    affected_processes     JSONB DEFAULT '[]',       -- 受影响工序列表
+    
+    -- 变更标记
+    is_changed              BOOLEAN DEFAULT FALSE,    -- 是否被变更
+    change_type             VARCHAR(20),             -- 变更类型（add/update/delete）
+    original_item_id       UUID,                     -- 原明细ID
+    
+    remark                  TEXT,
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_budget_items_budget_id ON budget_items(budget_id);
+CREATE INDEX idx_budget_items_project_id ON budget_items(project_id);
+CREATE INDEX idx_budget_items_category ON budget_items(category);
+CREATE INDEX idx_budget_items_process_code ON budget_items(process_code);
+```
+
+#### 3.3 人工成本库 `labor_cost_library`
+
+```sql
+-- 人工成本库（全国31省市分地区指导价）
+CREATE TABLE labor_cost_library (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    
+    province_code            VARCHAR(10) NOT NULL,     -- 省代码
+    province_name            VARCHAR(50) NOT NULL,     -- 省名称
+    city_code                VARCHAR(10),             -- 市代码（可为NULL表示省级统一价）
+    city_name                VARCHAR(50),             -- 市名称
+    
+    -- 工种
+    work_type               VARCHAR(50) NOT NULL,     -- 工种（水电工/泥瓦工/木工等）
+    work_type_name          VARCHAR(100) NOT NULL,    -- 工种名称
+    
+    -- 价格
+    unit_price              DECIMAL(10,2) NOT NULL,  -- 单价（元/工日）
+    unit                    VARCHAR(20) DEFAULT '工日',
+    
+    -- 系数
+    difficulty_factor       DECIMAL(4,2) DEFAULT 1.00, -- 难度系数
+    season_factor           DECIMAL(4,2) DEFAULT 1.00, -- 季节系数
+    
+    effective_date          DATE NOT NULL,            -- 生效日期
+    expire_date             DATE,                     -- 失效日期
+    
+    source                  VARCHAR(100),             -- 数据来源
+    is_local_avg            BOOLEAN DEFAULT FALSE,    -- 是否本地均价
+    
+    status                  VARCHAR(20) DEFAULT 'active',
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    UNIQUE(province_code, city_code, work_type, effective_date)
+);
+
+CREATE INDEX idx_labor_cost_province ON labor_cost_library(province_code);
+CREATE INDEX idx_labor_cost_city ON labor_cost_library(city_code);
+CREATE INDEX idx_labor_cost_work_type ON labor_cost_library(work_type);
+CREATE INDEX idx_labor_cost_effective ON labor_cost_library(effective_date);
+
+-- 初始化示例数据
+INSERT INTO labor_cost_library (province_code, province_name, city_code, city_name, work_type, work_type_name, unit_price) VALUES
+('110000', '北京市', '110100', '北京市', 'electrician', '水电工', 450.00),
+('110000', '北京市', '110100', '北京市', 'tiler', '泥瓦工', 420.00),
+('110000', '北京市', '110100', '北京市', 'carpenter', '木工', 400.00),
+('310000', '上海市', '310100', '上海市', 'electrician', '水电工', 480.00),
+('310000', '上海市', '310100', '上海市', 'tiler', '泥瓦工', 450.00),
+('440100', '广东省', '440100', '广州市', 'electrician', '水电工', 380.00),
+('440100', '广东省', '440100', '广州市', 'tiler', '泥瓦工', 350.00);
+```
+
+#### 3.4 地区调价系数库 `region_adjustment`
+
+```sql
+-- 地区调价系数库
+CREATE TABLE region_adjustment (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    
+    province_code            VARCHAR(10) NOT NULL,
+    province_name            VARCHAR(50) NOT NULL,
+    city_code                VARCHAR(10),
+    city_name                VARCHAR(50),
+    
+    -- 调价类型
+    adjust_type             VARCHAR(30) NOT NULL,     -- material/labor/transport/tax/season
+    adjust_type_name        VARCHAR(100) NOT NULL,   -- 材料/人工/运输/税费/季节
+    
+    -- 系数
+    coefficient              DECIMAL(8,4) NOT NULL,  -- 调价系数
+    description             VARCHAR(200),            -- 说明
+    
+    -- 时间范围
+    effective_date          DATE NOT NULL,
+    expire_date             DATE,
+    
+    -- 备注
+    reason                  TEXT,
+    source                  VARCHAR(100),
+    
+    status                  VARCHAR(20) DEFAULT 'active',
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_region_adjust_province ON region_adjustment(province_code);
+CREATE INDEX idx_region_adjust_city ON region_adjustment(city_code);
+CREATE INDEX idx_region_adjust_type ON region_adjustment(adjust_type);
+CREATE INDEX idx_region_adjust_effective ON region_adjustment(effective_date);
+
+-- 初始化示例数据
+INSERT INTO region_adjustment (province_code, province_name, city_code, city_name, adjust_type, adjust_type_name, coefficient, description) VALUES
+('110000', '北京市', NULL, NULL, 'material', '材料费调价', 1.1500, '北京地区材料价格指数'),
+('110000', '北京市', NULL, NULL, 'labor', '人工费调价', 1.2000, '北京地区人工成本'),
+('310000', '上海市', NULL, NULL, 'material', '材料费调价', 1.1800, '上海地区材料价格指数'),
+('310000', '上海市', NULL, NULL, 'labor', '人工费调价', 1.2500, '上海地区人工成本'),
+('440000', '广东省', NULL, NULL, 'material', '材料费调价', 1.0000, '广东地区材料价格（基准）'),
+('440000', '广东省', NULL, NULL, 'labor', '人工费调价', 1.0000, '广东地区人工成本（基准）');
+```
+
+#### 3.5 预算变更记录表 `budget_change_logs`
+
+```sql
+-- 预算变更记录表（记录每次预算变更）
+CREATE TABLE budget_change_logs (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    budget_id               UUID NOT NULL REFERENCES budget_orders(id),
+    project_id              UUID NOT NULL REFERENCES design_projects(id),
+    
+    change_no               VARCHAR(50) NOT NULL,     -- 变更单号
+    
+    -- 变更前
+    before_total            DECIMAL(12,2),            -- 变更前总额
+    before_items            JSONB,                    -- 变更前明细
+    
+    -- 变更后
+    after_total             DECIMAL(12,2),            -- 变更后总额
+    after_items             JSONB,                    -- 变更后明细
+    
+    -- 变更差异
+    diff_amount             DECIMAL(12,2) NOT NULL,  -- 差额
+    diff_rate               DECIMAL(6,4),            -- 变化率
+    
+    -- 变更原因
+    change_reason           VARCHAR(100) NOT NULL,   -- 变更原因
+    change_reason_detail    TEXT,                    -- 变更详情
+    
+    -- 变更类型
+    change_type             VARCHAR(30) NOT NULL,    -- design_change/material_change/process_change
+    related_item_id         UUID,                    -- 关联的明细项
+    
+    -- 触发条件
+    trigger_source          VARCHAR(50),            -- 触发来源（design/adjust/manual）
+    design_change_desc      TEXT,                    -- 设计变更描述
+    
+    -- 处理方式
+    handle_type             VARCHAR(30),             -- 处理方式（accept/reject/modify）
+    handle_notes            TEXT,
+    
+    -- 审批
+    need_approve            BOOLEAN DEFAULT FALSE,
+    approve_status          VARCHAR(20),             -- pending/approved/rejected
+    approver_id             UUID,
+    approved_at             TIMESTAMP,
+    
+    created_by              UUID NOT NULL,
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_budget_change_budget_id ON budget_change_logs(budget_id);
+CREATE INDEX idx_budget_change_project_id ON budget_change_logs(project_id);
+CREATE INDEX idx_budget_change_type ON budget_change_logs(change_type);
+CREATE INDEX idx_budget_change_created_at ON budget_change_logs(created_at);
+```
+
+#### 3.6 预算红线配置表 `budget_red_lines`
+
+```sql
+-- 预算红线配置表
+CREATE TABLE budget_red_lines (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    
+    user_id                 UUID REFERENCES users(id),  -- 用户专属配置（可选）
+    
+    city                    VARCHAR(50),               -- 城市
+    house_type              VARCHAR(30),              -- 房屋类型
+    
+    -- 红线类型
+    line_type               VARCHAR(30) NOT NULL,     -- total/material/labor
+    line_type_name          VARCHAR(100) NOT NULL,   -- 总额红线/材料费红线/人工费红线
+    
+    -- 阈值
+    threshold_value         DECIMAL(12,2) NOT NULL, -- 红线阈值
+    threshold_type          VARCHAR(20) DEFAULT 'fixed', -- fixed/percentage
+    
+    -- 预警配置
+    warning_level           VARCHAR(20) DEFAULT 'medium', -- high/medium/low
+    warning_threshold       DECIMAL(5,2) DEFAULT 80.00, -- 预警比例（如80%）
+    enable_warning          BOOLEAN DEFAULT TRUE,
+    
+    -- 操作配置
+    allow_exceed            BOOLEAN DEFAULT FALSE,   -- 是否允许超过红线
+    require_confirm         BOOLEAN DEFAULT TRUE,    -- 超过是否需要确认
+    
+    status                  VARCHAR(20) DEFAULT 'active',
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_budget_red_lines_user_id ON budget_red_lines(user_id);
+CREATE INDEX idx_budget_red_lines_city ON budget_red_lines(city);
+CREATE INDEX idx_budget_red_lines_type ON budget_red_lines(line_type);
+```
+
+#### 3.7 预算统计报表表 `budget_reports`
+
+```sql
+-- 预算统计报表表
+CREATE TABLE budget_reports (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    report_no               VARCHAR(50) UNIQUE NOT NULL,
+    
+    project_id              UUID NOT NULL REFERENCES design_projects(id),
+    budget_id               UUID REFERENCES budget_orders(id),
+    user_id                 UUID NOT NULL REFERENCES users(id),
+    
+    -- 统计周期
+    report_date             DATE NOT NULL,
+    period_type             VARCHAR(20),             -- daily/weekly/monthly
+    
+    -- 预算数据
+    budget_amount           DECIMAL(12,2),           -- 预算金额
+    actual_amount           DECIMAL(12,2),          -- 实际金额
+    variance_amount         DECIMAL(12,2),          -- 差异金额
+    variance_rate           DECIMAL(6,4),           -- 差异率
+    
+    -- 分类统计
+    material_budget         DECIMAL(12,2),
+    material_actual         DECIMAL(12,2),
+    material_variance       DECIMAL(12,2),
+    
+    labor_budget            DECIMAL(12,2),
+    labor_actual            DECIMAL(12,2),
+    labor_variance          DECIMAL(12,2),
+    
+    management_budget       DECIMAL(12,2),
+    management_actual       DECIMAL(12,2),
+    
+    -- 完成度
+    completion_rate         DECIMAL(5,2),           -- 完成率
+    
+    remark                  TEXT,
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_budget_reports_project_id ON budget_reports(project_id);
+CREATE INDEX idx_budget_reports_report_date ON budget_reports(report_date);
+```
+
+---
+
+## 四、预算引擎DAG工序链
+
+### 4.1 DAG工序影响链模型
+
+```
+设计变更 → 工序识别 → 影响链遍历 → 增量计算 → 预算更新
+              ↓
+         变更传播路径:
+         ┌─────────────────────────────────────────────────┐
+         │ 设计变更 ─→ 水电改造 ─→ 防水工程 ─→ 泥瓦工程   │
+         │      ↓                                         │
+         │      └→ 拆除工程 ─→ 墙体改造 ─→ 油漆工程       │
+         └─────────────────────────────────────────────────┘
+```
+
+### 4.2 工序关联表（实现DAG）
+
+| 工序编码 | 工序名称 | 前置工序 | 影响工序 |
+|----------|----------|----------|----------|
+| demolition | 拆除工程 | - | wall_change |
+| wall_change | 墙体改造 | demolition | waterproof, tiling |
+| electrical | 水电改造 | wall_change | waterproof |
+| waterproof | 防水工程 | wall_change, electrical | tiling |
+| tiling | 泥瓦工程 | waterproof, wall_change | carpentry, painting |
+| carpentry | 木工工程 | tiling | painting, installation |
+| painting | 油漆工程 | carpentry | installation |
+| installation | 安装工程 | carpentry, painting | acceptance |
+
+---
+
+## 五、表关系图（完整版）
+
+```
+┌─────────────┐
+│   users     │
+└──────┬──────┘
+       │
+       ├──< user_roles
+       ├──< house_profiles
+       │
+       ├──< budget_orders >────────── budget_items
+       │        │                        │
+       │        └──< budget_change_logs │
+       │        └──< budget_red_lines   │
+       │        └──< budget_reports    │
+       │
+       ├──< inspection_reports >──< inspection_issues
+       │
+       ├──< design_projects >──< design_plans >──< design_materials
+       │                              └──< design_drawings
+       │
+       ├──< construction_projects >──< construction_nodes >──< rectification_orders
+       │                              └──< acceptance_records
+       │
+       └──< orders >──< payment_records
+```
+
+---
+
+## 六、DDL初始化脚本
+
+```sql
+-- 创建数据库
+CREATE DATABASE jzhuang_platform;
+
+\c jzhuang_platform;
+
+-- 启用UUID扩展
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 执行上述所有表结构...
+```
 
 | 类型 | PostgreSQL类型 | 说明 |
 |------|---------------|------|
