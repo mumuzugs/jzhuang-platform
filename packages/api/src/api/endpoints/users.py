@@ -1,27 +1,24 @@
 """
 用户接口
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 from typing import Optional
-from datetime import datetime
 
 from src.core.database import get_db
-from src.models.user import User
+from src.models.user import User, get_user_by_id
 from src.api.endpoints.auth import get_current_user
 
 router = APIRouter()
 
 
 class UpdateProfileRequest(BaseModel):
-    """更新用户资料请求"""
     nickname: Optional[str] = Field(None, max_length=50)
     avatar: Optional[str] = Field(None, max_length=500)
 
 
 class UserProfileResponse(BaseModel):
-    """用户资料响应"""
     id: str
     phone: str
     nickname: Optional[str]
@@ -84,7 +81,6 @@ async def delete_account(
     db: AsyncSession = Depends(get_db)
 ):
     """注销账号"""
-    # 软删除
     current_user.status = "deleted"
     current_user.phone = f"deleted_{current_user.id}_{current_user.phone}"
     await db.commit()
