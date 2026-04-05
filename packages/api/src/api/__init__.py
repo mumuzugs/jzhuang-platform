@@ -3,10 +3,8 @@ API 路由
 """
 from fastapi import APIRouter
 
-# 创建主路由
 api_router = APIRouter()
 
-# 延迟导入避免循环依赖
 def include_routers():
     from src.api.endpoints import auth, users, design, inspection, construction, payment
     
