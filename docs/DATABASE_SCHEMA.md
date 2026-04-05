@@ -1135,4 +1135,231 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 ---
 
+## 七、补充表（架构V2.0完整覆盖）
+
+### 7.1 AI验房补充
+
+```sql
+-- 验房图片表
+CREATE TABLE inspection_images (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    report_id           UUID NOT NULL REFERENCES inspection_reports(id),
+    image_url           VARCHAR(500) NOT NULL,
+    thumbnail_url       VARCHAR(500),
+    image_type          VARCHAR(30) NOT NULL,       -- original/preprocessed/analyzed
+    room                VARCHAR(50),
+    ai_result           JSONB,
+    has_issue           BOOLEAN DEFAULT FALSE,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 城市风险配置表
+CREATE TABLE city_risk_configs (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    city_code            VARCHAR(10) NOT NULL,
+    city_name            VARCHAR(50) NOT NULL,
+    risk_type           VARCHAR(50) NOT NULL,
+    risk_name           VARCHAR(100) NOT NULL,
+    occurrence_rate     DECIMAL(5,2),
+    avg_cost            DECIMAL(12,2),
+    UNIQUE(city_code, risk_type)
+);
+```
+
+### 7.2 施工管理补充
+
+```sql
+-- 材料进场记录表
+CREATE TABLE material_records (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    record_no           VARCHAR(50) UNIQUE NOT NULL,
+    project_id          UUID NOT NULL REFERENCES construction_projects(id),
+    node_id             UUID REFERENCES construction_nodes(id),
+    material_name       VARCHAR(200) NOT NULL,
+    brand               VARCHAR(100),
+    quantity            DECIMAL(10,2) NOT NULL,
+    batch_no            VARCHAR(50),
+    supplier_name       VARCHAR(200),
+    inspection_status   VARCHAR(20) DEFAULT 'pending',
+    arrival_date        DATE,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 施工日志表
+CREATE TABLE construction_daily_logs (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    log_no              VARCHAR(50) UNIQUE NOT NULL,
+    project_id          UUID NOT NULL REFERENCES construction_projects(id),
+    node_id             UUID REFERENCES construction_nodes(id),
+    log_date            DATE NOT NULL,
+    log_type            VARCHAR(30) NOT NULL,
+    content             TEXT NOT NULL,
+    photos              JSONB DEFAULT '[]',
+    completed_work      TEXT,
+    next_plan           TEXT,
+    issues              JSONB DEFAULT '[]',
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 延期记录表
+CREATE TABLE construction_delays (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    delay_no            VARCHAR(50) UNIQUE NOT NULL,
+    project_id          UUID NOT NULL REFERENCES construction_projects(id),
+    delay_days          INTEGER NOT NULL,
+    reason_type         VARCHAR(50) NOT NULL,
+    reason_detail       TEXT NOT NULL,
+    status              VARCHAR(20) DEFAULT 'reported',
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 7.3 AI云监工补充
+
+```sql
+-- 云监工图片表
+CREATE TABLE supervision_images (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id          UUID NOT NULL REFERENCES construction_projects(id),
+    node_id             UUID REFERENCES construction_nodes(id),
+    image_url           VARCHAR(500) NOT NULL,
+    source_type         VARCHAR(30) NOT NULL,
+    room                VARCHAR(50),
+    construction_stage  VARCHAR(50),
+    clarity_score       INTEGER,
+    is_blur             BOOLEAN DEFAULT FALSE,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI识别记录表
+CREATE TABLE supervision_records (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    record_no           VARCHAR(50) UNIQUE NOT NULL,
+    project_id          UUID NOT NULL REFERENCES construction_projects(id),
+    node_id             UUID REFERENCES construction_nodes(id),
+    image_id            UUID REFERENCES supervision_images(id),
+    ai_model            VARCHAR(100) NOT NULL,
+    recognized_stage    VARCHAR(50),
+    progress_percent    INTEGER,
+    compliance_result   JSONB,
+    is_compliant        BOOLEAN DEFAULT TRUE,
+    anomalies           JSONB DEFAULT '[]',
+    safety_issues       JSONB DEFAULT '[]',
+    has_safety_risk     BOOLEAN DEFAULT FALSE,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 预警规则配置表
+CREATE TABLE warning_rules (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rule_code           VARCHAR(50) UNIQUE NOT NULL,
+    rule_name           VARCHAR(200) NOT NULL,
+    rule_type           VARCHAR(30) NOT NULL,
+    trigger_condition   JSONB NOT NULL,
+    warning_level       VARCHAR(20) NOT NULL,
+    message_template    TEXT NOT NULL,
+    notify_channels     JSONB DEFAULT '["app"]',
+    is_enabled          BOOLEAN DEFAULT TRUE,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 预警历史表
+CREATE TABLE warning_logs (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    warning_no          VARCHAR(50) UNIQUE NOT NULL,
+    project_id          UUID NOT NULL REFERENCES construction_projects(id),
+    node_id             UUID REFERENCES construction_nodes(id),
+    rule_id             UUID REFERENCES warning_rules(id),
+    warning_level       VARCHAR(20) NOT NULL,
+    title               VARCHAR(200) NOT NULL,
+    content             TEXT NOT NULL,
+    trigger_data        JSONB,
+    status              VARCHAR(20) DEFAULT 'pending',
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 7.4 验收补充
+
+```sql
+-- 验收标准库表
+CREATE TABLE acceptance_standards (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    standard_code       VARCHAR(50) UNIQUE NOT NULL,
+    standard_type       VARCHAR(50) NOT NULL,
+    item_code           VARCHAR(50),
+    item_name           VARCHAR(200) NOT NULL,
+    item_type           VARCHAR(20) NOT NULL,     -- main/general
+    check_method        TEXT,
+    qualified_standard  TEXT NOT NULL,
+    unqualified_deal   TEXT,
+    user_friendly_desc TEXT,
+    national_code       VARCHAR(50),
+    version             VARCHAR(20),
+    status              VARCHAR(20) DEFAULT 'active',
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 7.5 支付补充
+
+```sql
+-- 分期付款计划表
+CREATE TABLE payment_installments (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    installment_no      VARCHAR(50) UNIQUE NOT NULL,
+    project_id          UUID NOT NULL REFERENCES construction_projects(id),
+    order_id            UUID REFERENCES orders(id),
+    total_amount        DECIMAL(12,2) NOT NULL,
+    installment_count    INTEGER NOT NULL,
+    paid_amount         DECIMAL(12,2) DEFAULT 0,
+    remaining_amount     DECIMAL(12,2),
+    installments        JSONB NOT NULL,
+    status              VARCHAR(20) DEFAULT 'active',
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 7.6 通用附件表
+
+```sql
+-- 通用附件表
+CREATE TABLE attachments (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_type       VARCHAR(50) NOT NULL,
+    business_id         UUID NOT NULL,
+    file_name           VARCHAR(255) NOT NULL,
+    file_url            VARCHAR(500) NOT NULL,
+    file_size           BIGINT,
+    file_type           VARCHAR(100),
+    category            VARCHAR(50),
+    title               VARCHAR(200),
+    is_public          BOOLEAN DEFAULT FALSE,
+    uploaded_by         UUID REFERENCES users(id),
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_attachments_business ON attachments(business_type, business_id);
+```
+
+---
+
+## 八、最终表统计
+
+| 域 | 表数 |
+|---|---|
+| 用户域 | 5 |
+| 验房域 | 4 |
+| 设计域 | 5 |
+| 预算域 | 7 |
+| 施工域 | 6 |
+| 云监工域 | 4 |
+| 验收域 | 3 |
+| 支付域 | 4 |
+| 系统域 | 4 |
+| 通用 | 1 |
+| **总计** | **43** |
+
+---
+
 *文档版本：V2.0 | 更新日期：2026-04-06*
