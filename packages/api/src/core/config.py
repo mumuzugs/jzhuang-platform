@@ -1,18 +1,12 @@
 """
 应用配置
 """
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
     """应用配置类"""
-    
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        case_sensitive=True,
-        extra="ignore"  # 允许额外的环境变量
-    )
     
     # 应用信息
     APP_NAME: str = "集装修"
@@ -30,13 +24,9 @@ class Settings(BaseSettings):
     REDIS_PASSWORD: str = ""
     
     # JWT配置
-    JWT_SECRET: str = "dev-secret-key-change-in-production"
+    JWT_SECRET: str
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 10080
-    
-    # 短信验证码配置
-    SMS_CODE_EXPIRE_MINUTES: int = 5
-    SMS_CODE_LENGTH: int = 6
     
     # AI服务配置
     ZHIPU_API_KEY: str = ""
@@ -55,6 +45,10 @@ class Settings(BaseSettings):
     
     # CORS配置
     CORS_ALLOW_ORIGINS: str = "*"
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
 
 
 @lru_cache()

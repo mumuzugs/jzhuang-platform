@@ -2,13 +2,14 @@
 
 <div align="center">
 
+![Logo](docs/images/logo.png)
+
 **国内首个AI全链路赋能的装修新手零门槛一站式服务平台**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
-[![Go](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://go.dev/)
-
-**架构版本：V2.0**
+[![React](https://img.shields.io/badge/React-18-blue.svg)](https://reactjs.org/)
+[![Flutter](https://img.shields.io/badge/Flutter-3.0-blue.svg)](https://flutter.dev/)
 
 </div>
 
@@ -22,75 +23,88 @@
 - 💰 **预算超支** → 设计-预算实时联动，预算红线预警
 - 👷 **没时间盯工地** → AI云监工，进度自动识别
 
-## 📋 核心功能（8大模块）
+## 📋 核心功能
 
 | 模块 | 功能 | 状态 |
 |------|------|------|
-| 🤖 AI智能验房 | 拍照识别8类房屋问题，生成专业报告 | ✅ |
-| 🎨 AI设计与预算联动 | 户型→方案→效果图→预算实时联动 | ✅ |
-| 👷 施工全流程管理 | 计划生成、进度管控、节点验收 | ✅ |
-| 📹 AI云监工 | 施工进度识别、合规检测、预警推送 | ✅ |
-| ✅ 标准化验收 | 国家规范库、节点验收、维保服务 | ✅ |
-| 💳 订单与支付 | 微信支付、分期付款、资金管控 | ✅ |
-| 👤 用户全域管理 | 身份认证、权限控制、房屋档案 | ✅ |
-| 🔐 合规与安全 | 三级等保、数据安全、操作审计 | 🔨 |
+| 🤖 AI验房 | 拍照识别8类房屋问题，生成专业报告 | 🔨 开发中 |
+| 🎨 AI设计 | 户型图→平面方案→效果图→施工图 | 🔨 开发中 |
+| 💰 预算联动 | 设计参数实时联动预算，秒级响应 | 🔨 开发中 |
+| 👷 云监工 | AI识别施工进度，节点自动通知 | 🔨 开发中 |
+| ✅ 验收指导 | 分阶段验收清单，AI辅助验收 | 📋 规划中 |
+
+## 🏗️ 技术架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      接入层                                  │
+│    微信小程序(Taro)    │    PC管理后台(React)    │   APP(Flutter)   │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                      API网关层 (Nginx/APISIX)               │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                      应用服务层                              │
+│  用户服务  │  验房服务  │  设计服务  │  预算引擎  │  监工服务  │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                      AI能力层                               │
+│    智谱GLM-4.5    │    阿里云视觉    │    预算联动引擎(Go)    │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## 📂 项目结构
 
 ```
 jzhuang-platform/
-├── docs/                    # 项目文档
-│   ├── PRD.md              # MVP产品需求文档
-│   ├── ARCHITECTURE.md     # 技术架构方案 V2.0
-│   └── TEST_REPORT.md      # 测试报告
 ├── packages/
-│   ├── api/               # 后端API服务 (Python FastAPI)
-│   ├── engine/             # 预算引擎 (Go)
-│   ├── web/               # 微信小程序 (Taro)
-│   └── admin/             # PC管理后台 (React)
-├── scripts/                # 工具脚本
-└── docker-compose.yml
+│   ├── web/           # 微信小程序前端 (Taro)
+│   ├── admin/         # PC管理后台 (React + Ant Design)
+│   ├── api/           # 后端API服务 (Python FastAPI)
+│   ├── engine/        # 预算计算引擎 (Go)
+│   └── ai/            # AI服务封装
+├── docs/              # 项目文档
+├── scripts/           # 脚本工具
+├── configs/           # 配置文件
+├── docker-compose.yml # Docker编排
+└── README.md
 ```
 
 ## 🚀 快速开始
 
+### 环境要求
+
+- Node.js >= 18
+- Python >= 3.11
+- Go >= 1.21
+- Docker >= 24
+- PostgreSQL >= 15
+- Redis >= 7
+
+### 本地开发
+
 ```bash
 # 克隆仓库
-git clone https://github.com/mumuzugs/jzhuang-platform.git
+git clone https://github.com/你的用户名/jzhuang-platform.git
 cd jzhuang-platform
 
 # 启动基础设施
 docker-compose up -d postgres redis
 
+# 安装前端依赖
+cd packages/web && npm install
+cd packages/admin && npm install
+
 # 安装后端依赖
 cd packages/api && pip install -r requirements.txt
 
-# 启动后端
-uvicorn src.main:app --reload --port 8000
+# 启动开发服务
+cd packages/web && npm run dev
+cd packages/api && uvicorn main:app --reload
 ```
-
-## 🔧 技术栈
-
-| 层级 | 技术选型 | 说明 |
-|------|----------|------|
-| 后端 | Python FastAPI | AI服务对接、业务快速迭代 |
-| 高并发 | Go Gin | 预算引擎、支付服务 |
-| 数据库 | PostgreSQL + Redis | 主库 + 缓存 |
-| 前端 | Taro + React | 小程序 + 管理后台 |
-
-## 📊 API接口统计
-
-| 模块 | 接口数 | 说明 |
-|------|--------|------|
-| 认证 | 8 | 登录/注册/Token |
-| 用户 | 4 | 资料/权限/VIP状态 |
-| 验房 | 7 | AI验房/报告 |
-| 设计 | 11 | AI设计/预算 |
-| 施工 | 10 | 施工计划/节点 |
-| 监工 | 5 | 进度识别/预警 |
-| 验收 | 6 | 验收流程/维保 |
-| 支付 | 6 | 订单/微信支付 |
-| **总计** | **57** | - |
 
 ## 📅 开发计划
 
@@ -100,13 +114,21 @@ uvicorn src.main:app --reload --port 8000
 | Beta测试 | 2周 | 1000用户测试 |
 | 正式上线 | - | 全渠道发布 |
 
+## 📖 文档
+
+- [产品需求文档(PRD)](docs/prd.md)
+- [技术架构方案](docs/architecture.md)
+- [API接口文档](docs/api.md)
+- [数据库设计](docs/database.md)
+- [部署文档](docs/deployment.md)
+
 ## 🤝 贡献指南
 
 欢迎提交 Issue 和 Pull Request！
 
 ## 📄 许可证
 
-MIT License
+本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
 
 ---
 
