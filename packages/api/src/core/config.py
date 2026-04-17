@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     
     # AI服务配置
     ZHIPU_API_KEY: str = ""
+    ZHIPU_VISION_MODEL: str = "glm-4v-flash"
     ALIYUN_ACCESS_KEY_ID: str = ""
     ALIYUN_ACCESS_KEY_SECRET: str = ""
     TENCENT_SECRET_ID: str = ""

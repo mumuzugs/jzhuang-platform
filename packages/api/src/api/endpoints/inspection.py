@@ -7,12 +7,13 @@ AI验房接口
 - 支持图片上传
 - 城市高频风险查询
 """
-from fastapi import APIRouter, Depends, UploadFile, File, Form
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
 from src.api.endpoints.auth import get_current_user
 from src.services.inspection import inspection_service, ISSUE_TYPES, CITY_RISKS
+from src.models.user import User
 
 router = APIRouter()
 

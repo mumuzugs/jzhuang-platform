@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from src.core.config import settings
 from src.core.database import engine, Base
-from src.api import v1
+from src.api import router as api_router
 
 
 @asynccontextmanager
@@ -38,7 +38,7 @@ app.add_middleware(
 )
 
 # 注册路由
-app.include_router(v1.router, prefix="/api/v1")
+app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/")
