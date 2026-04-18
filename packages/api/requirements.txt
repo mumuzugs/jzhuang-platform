@@ -13,5 +13,5 @@ httpx==0.26.0
 alibabacloud-ocr-api20210707==2.0.8
 zhipuai==2.1.5.20250825
 tencentcloud-sdk-python==3.0.497
-wechatpy==6.5.0
+wechatpy==1.8.18
 sentry-sdk[fastapi]==1.39.1
