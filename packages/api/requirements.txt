@@ -11,7 +11,7 @@ python-multipart==0.0.6
 aiofiles==23.2.1
 httpx==0.26.0
 alibabacloud-ocr-api20210707==2.0.8
-zhipuai==4.0.2
+zhipuai==2.1.5
 tencentcloud-sdk-python==3.0.497
 wechatpy==6.5.0
 sentry-sdk[fastapi]==1.39.1
