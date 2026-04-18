@@ -85,7 +85,7 @@ import { Icon } from '@iconify/vue'
 import TabBar from '@/components/TabBar.vue'
 import { getProjectList, type ConstructionProject } from '@/api/construction'
 
-const projectList = ref<ConstructionProject[]>([])
+const projectList = ref([] as ConstructionProject[])
 const loading = ref(false)
 const page = ref(1)
 

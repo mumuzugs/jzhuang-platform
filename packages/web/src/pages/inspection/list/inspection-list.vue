@@ -98,7 +98,7 @@ const tabs = [
 ]
 
 const currentTab = ref('all')
-const projectList = ref<InspectionProject[]>([])
+const projectList = ref([] as InspectionProject[])
 const loading = ref(false)
 const page = ref(1)
 const hasMore = ref(true)

@@ -83,7 +83,7 @@ const tabs = [
 
 const currentTab = ref('all')
 const designList = ref<any[]>([])
-const styles = ref<Style[]>([])
+const styles = ref([] as Style[])
 const loading = ref(false)
 const page = ref(1)
 
