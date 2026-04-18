@@ -47,9 +47,18 @@ class Settings(BaseSettings):
     # CORS配置
     CORS_ALLOW_ORIGINS: str = "*"
     
+    # 服务配置
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    
+    # 短信验证码配置
+    SMS_CODE_EXPIRE_MINUTES: int = 5
+    SMS_CODE_LENGTH: int = 6
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"
 
 
 @lru_cache()
