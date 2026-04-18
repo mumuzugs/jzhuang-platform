@@ -1,0 +1,91 @@
+{
+  "pages": [
+    {
+      "path": "pages/home/home",
+      "style": {
+        "navigationBarTitleText": "首页"
+      }
+    },
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "首页"
+      }
+    },
+    {
+      "path": "pages/inspection/list/inspection-list",
+      "style": {
+        "navigationBarTitleText": "AI验房"
+      }
+    },
+    {
+      "path": "pages/design/list/design-list",
+      "style": {
+        "navigationBarTitleText": "设计方案"
+      }
+    },
+    {
+      "path": "pages/construction/list/construction-list",
+      "style": {
+        "navigationBarTitleText": "我的施工"
+      }
+    },
+    {
+      "path": "pages/mine/mine",
+      "style": {
+        "navigationBarTitleText": "我的"
+      }
+    },
+    {
+      "path": "pages/auth/login/login",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationStyle": "custom"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "集装修",
+    "navigationBarBackgroundColor": "#F8F8F8",
+    "backgroundColor": "#F8F8F8"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#007AFF",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/home/home",
+        "iconPath": "static/tabbar/home.png",
+        "selectedIconPath": "static/tabbar/home-active.png",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/inspection/list/inspection-list",
+        "iconPath": "static/tabbar/inspection.png",
+        "selectedIconPath": "static/tabbar/inspection-active.png",
+        "text": "AI验房"
+      },
+      {
+        "pagePath": "pages/design/list/design-list",
+        "iconPath": "static/tabbar/design.png",
+        "selectedIconPath": "static/tabbar/design-active.png",
+        "text": "设计"
+      },
+      {
+        "pagePath": "pages/construction/list/construction-list",
+        "iconPath": "static/tabbar/construction.png",
+        "selectedIconPath": "static/tabbar/construction-active.png",
+        "text": "施工"
+      },
+      {
+        "pagePath": "pages/mine/mine",
+        "iconPath": "static/tabbar/mine.png",
+        "selectedIconPath": "static/tabbar/mine-active.png",
+        "text": "我的"
+      }
+    ]
+  }
+}
